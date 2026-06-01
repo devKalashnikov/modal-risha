@@ -1,0 +1,48 @@
+# Risha ComfyUI extra model paths
+# Baked into the Modal image at /root/comfy/ComfyUI/extra_model_paths.yaml
+# so ComfyUI explicitly knows where to scan for models on the mounted Volume.
+#
+# Even though these match ComfyUI's defaults, declaring them explicitly
+# protects against:
+#   - path-discovery bugs on different ComfyUI versions
+#   - subdirs that don't exist yet at startup (they get auto-created when
+#     download_models runs and writes the first file)
+#   - confusion if anyone adds a second base_path later
+#
+# All paths are relative to base_path. Plural keys (e.g. `loras`) accept
+# pipe-separated multiple paths if we ever split storage.
+
+risha_modal:
+    base_path: /root/comfy/ComfyUI/
+    is_default: true
+
+    # Standard model categories
+    checkpoints:        models/checkpoints/
+    diffusion_models:   models/diffusion_models/
+    unet:               models/diffusion_models/   # alias — some loaders use 'unet'
+    text_encoders:      models/text_encoders/
+    clip:               models/text_encoders/      # alias
+    vae:                models/vae/
+    loras:              models/loras/
+    controlnet:         models/controlnet/
+    clip_vision:        models/clip_vision/
+    embeddings:         models/embeddings/
+    upscale_models:     models/upscale_models/
+    style_models:       models/style_models/
+
+    # Risha-specific / less-standard categories that some custom nodes use
+    ipadapter:          models/ipadapter/
+    photomaker:         models/photomaker/
+    pulid:              models/pulid/
+    insightface:        models/insightface/
+    facerestore_models: models/facerestore_models/
+    sams:               models/sams/               # SAM / SAM2 segmentation
+    ultralytics:        models/ultralytics/        # detector models
+    rembg:              models/rembg/
+
+    # Animation / video tier (Phase 3)
+    wan_models:         models/diffusion_models/   # WanVideoWrapper convention
+    animatediff_models: models/animatediff_models/
+
+    # ComfyUI-Manager + custom node managers tend to use this fallback
+    custom_nodes:       custom_nodes_extra/        # mounted Volume for runtime-installed nodes

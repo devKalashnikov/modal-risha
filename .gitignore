@@ -1,0 +1,45 @@
+# Strict allowlist: ignore everything at root, un-ignore the minimum
+# needed for a teammate to run `modal deploy modal_comfyui.py` and
+# `modal deploy modal_judge.py` from a fresh clone.
+
+/*
+
+!/.gitignore
+!/modal_comfyui.py
+!/modal_judge.py
+!/extra_model_paths.yaml
+!/custom_nodes/
+!/orchestrator/
+!/user-uploads/
+
+# Inside custom_nodes/  ->  only the Risha node pack
+/custom_nodes/*
+!/custom_nodes/risha_nodes/
+
+# Inside orchestrator/  ->  only the rubrics dir
+/orchestrator/*
+!/orchestrator/rubrics/
+
+# Inside user-uploads/  ->  only the plan CSV, no source images
+/user-uploads/*
+!/user-uploads/qareeb_keyframes.csv
+
+# workflows/ is intentionally NOT shipped yet — still being finalized.
+# When the finalized JSON(s) are ready, uncomment these and add each
+# specific file you want to ship:
+#   !/workflows/
+#   /workflows/*
+#   !/workflows/<finalized_filename>.api.json
+
+# Common noise that should never be tracked even inside allowed dirs
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.DS_Store
+**/Thumbs.db
+**/.venv/
+**/venv/
+**/.env
+**/.env.*
+.idea/
+.vscode/
