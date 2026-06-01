@@ -5,6 +5,7 @@
 /*
 
 !/.gitignore
+!/README.md
 !/modal_comfyui.py
 !/modal_judge.py
 !/extra_model_paths.yaml
