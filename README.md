@@ -13,7 +13,6 @@ This repo contains the **minimum source needed to deploy both apps** into the sh
 
 - Python 3.10+
 - A Modal account that has been added to the shared Risha workspace
-- Read access to this private GitHub repo (Dawood adds you as a collaborator)
 
 ---
 
@@ -25,15 +24,6 @@ This repo contains the **minimum source needed to deploy both apps** into the sh
 git clone https://github.com/devKalashnikov/modal-risha.git
 cd modal-risha
 ```
-
-Because the repo is private, plain `git clone` over HTTPS only works once your GitHub account is authenticated locally. Easiest path:
-
-```bash
-# install the GitHub CLI, then:
-gh auth login          # pick GitHub.com -> HTTPS -> web browser -> paste the one-time code
-```
-
-After that, all clones / pulls / pushes Just Work without prompts. Alternatives are a personal access token or an SSH key — see <https://docs.github.com/en/authentication> if you prefer either.
 
 ### 2. Install the Modal CLI
 
@@ -139,43 +129,3 @@ verdict = judge.judge.remote(
 ```
 
 Always check `_parse_error` before trusting `verdict` in retry-counting logic.
-
----
-
-## Day-to-day commands
-
-```bash
-modal app list                       # what's currently deployed
-modal app logs risha-comfyui         # tail Comfy logs (quiet => idle)
-modal app logs risha-judge           # tail judge logs
-modal app stop risha-comfyui         # force scaledown -- stops paying for warm GPU
-modal app stop risha-judge
-modal volume ls risha-comfy-outputs  # browse rendered PNGs in the outputs volume
-```
-
-Both apps default to `scaledown_window=3600` — they stay warm for one hour after the last request, then scale to zero (no GPU cost while cold). Each request resets the timer. To change the window, edit the `scaledown_window=...` value on the `@app.cls(...)` / `@app.function(...)` decorator and redeploy.
-
-Cold start adds roughly 60–90 s on Comfy (model scan) and 30–60 s on the judge (vLLM weight load).
-
----
-
-## What's in this repo
-
-| Path | Purpose |
-|---|---|
-| `modal_comfyui.py` | `risha-comfyui` app definition |
-| `modal_judge.py` | `risha-judge` app definition |
-| `extra_model_paths.yaml` | ComfyUI model-path map (baked into the image at build time) |
-| `custom_nodes/risha_nodes/` | Custom Risha ComfyUI node pack (baked in) |
-| `orchestrator/rubrics/` | Markdown rubrics consumed by the custom nodes (baked in) |
-| `user-uploads/qareeb_keyframes.csv` | Plan CSV (baked in) |
-| `workflows/` | Empty pending finalization — Comfy deploy will fail until populated |
-| `.gitignore` | Strict allowlist that keeps everything else out of the repo |
-
-Anything else in your local working copy is intentionally not tracked — outputs, caches, the broader project tree, etc.
-
----
-
-## Questions
-
-Ping Dawood.
