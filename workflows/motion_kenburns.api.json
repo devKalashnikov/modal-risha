@@ -1,0 +1,83 @@
+{
+    "_comment": "Ken Burns motion engine — loads a still keyframe + plan-row metadata, runs it through RishaMotionSelector to derive deterministic zoom/pan/curve, renders the frame batch, and saves an animated WEBP preview. Swap node 50 (SaveAnimatedWEBP) for VHS_VideoCombine once VideoHelperSuite is in the Modal image. Inputs are patched by RishaPlanExecutor or the orchestrator at queue time.",
+
+    "10": {
+        "_comment": "Source still — set image to <keyframe_id>.png from the prior T2I/Edit run.",
+        "class_type": "LoadImage",
+        "inputs": {
+            "image": "k004.png",
+            "upload": "image"
+        }
+    },
+
+    "20": {
+        "_comment": "Load the plan row matching the keyframe so motion params flow from the selector, not from manual graph inputs.",
+        "class_type": "RishaCSVRowLoader",
+        "inputs": {
+            "csv_path": "/root/comfy/ComfyUI/input/plans/latest.csv",
+            "row_index": 3
+        }
+    },
+
+    "30": {
+        "_comment": "Authoritative motion selection. Style+composition_notes+motion_intent + duration => kind, curve, params_json.",
+        "class_type": "RishaMotionSelector",
+        "inputs": {
+            "motion_intent":     ["20", 5],
+            "composition_notes": ["20", 10],
+            "pair_id":           ["20", 6],
+            "pair_role":         ["20", 7],
+            "adjacent_delta":    ["20", 11],
+            "style":             ["20", 16],
+            "timestamp_start":   ["20", 1],
+            "timestamp_end":     ["20", 2],
+            "fps":               30,
+            "keyframe_id":       ["20", 0]
+        }
+    },
+
+    "40": {
+        "_comment": "Frame-by-frame Ken Burns. All four override knobs default to 0 (use selector values). Set a non-zero override on a knob to pin that param without re-routing.",
+        "class_type": "RishaKenBurnsRender",
+        "inputs": {
+            "image":       ["10", 0],
+            "params_json": ["30", 3],
+            "curve_name":  ["30", 2],
+            "duration_s":  ["30", 1],
+            "fps":         30,
+            "override_start_zoom": 0.0,
+            "override_end_zoom":   0.0,
+            "override_pan_dx":     0.0,
+            "override_pan_dy":     0.0
+        }
+    },
+
+    "50": {
+        "_comment": "v1 output — animated WEBP preview, works without any extra custom node packs. Replace with a VHS_VideoCombine block (format=video/h264-mp4) once VideoHelperSuite ships in the Modal image.",
+        "class_type": "SaveAnimatedWEBP",
+        "inputs": {
+            "images":          ["40", 0],
+            "filename_prefix": "risha_motion/kenburns",
+            "fps":             30.0,
+            "lossless":        false,
+            "quality":         80,
+            "method":          "default"
+        }
+    },
+
+    "60": {
+        "_comment": "Audit channel — surfaces the render report (frame count, curve, applied params) in /history so the orchestrator can verify what the selector chose without re-deriving.",
+        "class_type": "Display Any (rgthree)",
+        "inputs": {
+            "source": ["40", 2]
+        }
+    },
+
+    "70": {
+        "_comment": "Audit channel — surfaces the raw params_json for diff against motion_spec.json.",
+        "class_type": "Display Any (rgthree)",
+        "inputs": {
+            "source": ["30", 3]
+        }
+    }
+}

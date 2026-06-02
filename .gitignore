@@ -25,12 +25,13 @@
 /user-uploads/*
 !/user-uploads/qareeb_keyframes.csv
 
-# workflows/ is intentionally NOT shipped yet — still being finalized.
-# When the finalized JSON(s) are ready, uncomment these and add each
-# specific file you want to ship:
-#   !/workflows/
-#   /workflows/*
-#   !/workflows/<finalized_filename>.api.json
+# workflows/ — only the finalized motion-engine API workflows ship.
+# T2I + Edit workflows still being tuned; add them here when ready.
+!/workflows/
+/workflows/*
+!/workflows/motion_kenburns.api.json
+!/workflows/motion_static_slide.api.json
+# !/workflows/motion_flf_ltx.api.json     # add when LTX model lands on Modal volume
 
 # Common noise that should never be tracked even inside allowed dirs
 **/__pycache__/
