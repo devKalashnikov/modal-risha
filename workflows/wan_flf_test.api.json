@@ -1,0 +1,222 @@
+{
+  "_comment": "WAN 2.2 First-Last-Frame video — official fp8 dual hi-lo with Lightning LoRAs. Native ComfyUI nodes only (no WanVideoWrapper). Pre-req on the volume: wan2.2_i2v_{high,low}_noise_14B_fp8_scaled, umt5_xxl_fp8_e4m3fn_scaled, wan_2.1_vae, clip_vision_h, wan22_i2v_lightning_4step_seko_v1_{high,low}_noise_model. Drop start.png + end.png via the UI uploader before queueing.",
+  "1": {
+    "class_type": "UNETLoader",
+    "_meta": { "title": "UNET HighNoise" },
+    "inputs": {
+      "unet_name": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "UNETLoader",
+    "_meta": { "title": "UNET LowNoise" },
+    "inputs": {
+      "unet_name": "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "3": {
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "UMT5-XXL fp8" },
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan"
+    }
+  },
+  "4": {
+    "class_type": "CLIPVisionLoader",
+    "_meta": { "title": "CLIP-Vision-H" },
+    "inputs": { "clip_name": "clip_vision_h.safetensors" }
+  },
+  "5": {
+    "class_type": "VAELoader",
+    "_meta": { "title": "WAN 2.1 VAE" },
+    "inputs": { "vae_name": "wan_2.1_vae.safetensors" }
+  },
+
+  "_comment_flow_matching": "ModelSamplingSD3 shift=5 for lightning models (shift=8 if using non-lightning standard models). Applied to BOTH UNETs.",
+  "8": {
+    "class_type": "ModelSamplingSD3",
+    "_meta": { "title": "Hi Shift" },
+    "inputs": { "model": ["1", 0], "shift": 5 }
+  },
+  "9": {
+    "class_type": "ModelSamplingSD3",
+    "_meta": { "title": "Lo Shift" },
+    "inputs": { "model": ["2", 0], "shift": 5 }
+  },
+
+  "_comment_lightning": "4-step Lightning LoRAs — applied AFTER ModelSamplingSD3 to each path. Strength 1.0 (canonical). Without these, switch to 20 steps + cfg 4 + euler/simple per the wan-flf-video skill 'Standard' config.",
+  "10": {
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": { "title": "Hi Lightning LoRA" },
+    "inputs": {
+      "model": ["8", 0],
+      "lora_name": "wan22_i2v_lightning_4step_seko_v1_high_noise_model.safetensors",
+      "strength_model": 1.0
+    }
+  },
+  "11": {
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": { "title": "Lo Lightning LoRA" },
+    "inputs": {
+      "model": ["9", 0],
+      "lora_name": "wan22_i2v_lightning_4step_seko_v1_low_noise_model.safetensors",
+      "strength_model": 1.0
+    }
+  },
+
+  "_comment_inputs": "LoadImage filenames are patched by run_flf_test (start_image / end_image kwargs). Upload via UI before queueing if running interactively.",
+  "20": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "Start Frame" },
+    "inputs": { "image": "start.png" }
+  },
+  "21": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "End Frame" },
+    "inputs": { "image": "end.png" }
+  },
+
+  "_comment_resize": "ImageResizeKJv2 — crop+pad both frames to identical 480x720. The end frame inherits width/height from the start frame's output so the WanFLF node sees matching dims. divisible_by:2 (WAN needs 16-aligned, this is safe).",
+  "22": {
+    "class_type": "ImageResizeKJv2",
+    "_meta": { "title": "Resize Start" },
+    "inputs": {
+      "image": ["20", 0],
+      "width": 480,
+      "height": 720,
+      "upscale_method": "nearest-exact",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 2
+    }
+  },
+  "23": {
+    "class_type": "ImageResizeKJv2",
+    "_meta": { "title": "Resize End" },
+    "inputs": {
+      "image": ["21", 0],
+      "width": ["22", 1],
+      "height": ["22", 2],
+      "upscale_method": "nearest-exact",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 2
+    }
+  },
+
+  "30": {
+    "class_type": "CLIPVisionEncode",
+    "_meta": { "title": "CV Encode Start" },
+    "inputs": { "clip_vision": ["4", 0], "image": ["22", 0], "crop": "center" }
+  },
+  "31": {
+    "class_type": "CLIPVisionEncode",
+    "_meta": { "title": "CV Encode End" },
+    "inputs": { "clip_vision": ["4", 0], "image": ["23", 0], "crop": "center" }
+  },
+
+  "_comment_text": "Positive prompt is patched by run_flf_test. Describe the TRANSITION motion (e.g. 'smooth seamless camera drift, gentle parallax') not just the subject — see wan-flf-video skill prompt tips.",
+  "40": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Positive" },
+    "inputs": {
+      "clip": ["3", 0],
+      "text": "smooth seamless transition, gentle camera drift, illustrative animation, restrained motion"
+    }
+  },
+  "41": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Negative" },
+    "inputs": {
+      "clip": ["3", 0],
+      "text": "The tones are vibrant, overexposed, static, details are unclear, subtitles, style, work, painting, image, still, overall grayish, worst quality, low quality, JPEG compression artifacts, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, distorted limbs, merged fingers, motionless image, cluttered background, three legs, many people in the background, walking backwards"
+    }
+  },
+
+  "_comment_flf": "WanFirstLastFrameToVideo packs the two endpoint frames + their CLIP vision embeds into a conditioned latent. length=81 → ~5s @ 16fps (must be 4n+1). batch_size=1.",
+  "50": {
+    "class_type": "WanFirstLastFrameToVideo",
+    "_meta": { "title": "WAN FLF Conditioning" },
+    "inputs": {
+      "positive": ["40", 0],
+      "negative": ["41", 0],
+      "vae": ["5", 0],
+      "clip_vision_start_image": ["30", 0],
+      "clip_vision_end_image": ["31", 0],
+      "start_image": ["22", 0],
+      "end_image": ["23", 0],
+      "width": ["23", 1],
+      "height": ["23", 2],
+      "length": 81,
+      "batch_size": 1
+    }
+  },
+
+  "_comment_sampling": "Two-pass KSamplerAdvanced — Hi handles steps 0→2 (adds noise, returns leftover), Lo handles 2→4 (no noise added, no leftover, runs to completion). Both pull conditioning from the SAME WanFLF outputs. uni_pc + beta + cfg=1 are the canonical Lightning settings.",
+  "60": {
+    "class_type": "KSamplerAdvanced",
+    "_meta": { "title": "Hi Pass" },
+    "inputs": {
+      "model": ["10", 0],
+      "positive": ["50", 0],
+      "negative": ["50", 1],
+      "latent_image": ["50", 2],
+      "add_noise": "enable",
+      "noise_seed": 42,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "uni_pc",
+      "scheduler": "beta",
+      "start_at_step": 0,
+      "end_at_step": 2,
+      "return_with_leftover_noise": "enable"
+    }
+  },
+  "61": {
+    "class_type": "KSamplerAdvanced",
+    "_meta": { "title": "Lo Pass" },
+    "inputs": {
+      "model": ["11", 0],
+      "positive": ["50", 0],
+      "negative": ["50", 1],
+      "latent_image": ["60", 0],
+      "add_noise": "disable",
+      "noise_seed": 42,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "uni_pc",
+      "scheduler": "beta",
+      "start_at_step": 2,
+      "end_at_step": 4,
+      "return_with_leftover_noise": "disable"
+    }
+  },
+
+  "70": {
+    "class_type": "VAEDecode",
+    "_meta": { "title": "Decode" },
+    "inputs": { "samples": ["61", 0], "vae": ["5", 0] }
+  },
+  "80": {
+    "class_type": "VHS_VideoCombine",
+    "_meta": { "title": "MP4 Out" },
+    "inputs": {
+      "images": ["70", 0],
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "wan_flf_test",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true,
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false
+    }
+  }
+}

@@ -8,6 +8,7 @@
 !/README.md
 !/modal_comfyui.py
 !/modal_judge.py
+!/modal_video.py
 !/extra_model_paths.yaml
 !/custom_nodes/
 !/orchestrator/
@@ -31,6 +32,7 @@
 /workflows/*
 !/workflows/motion_kenburns.api.json
 !/workflows/motion_static_slide.api.json
+!/workflows/wan_flf_test.api.json
 # !/workflows/motion_flf_ltx.api.json     # add when LTX model lands on Modal volume
 
 # Common noise that should never be tracked even inside allowed dirs
