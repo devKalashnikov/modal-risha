@@ -32,8 +32,9 @@
 /workflows/*
 !/workflows/motion_kenburns.api.json
 !/workflows/motion_static_slide.api.json
+# LTX-2.3 22B distilled fp8 FLF (graph form, load via the UI)
 !/workflows/wan_flf_test.api.json
-# !/workflows/motion_flf_ltx.api.json     # add when LTX model lands on Modal volume
+!/workflows/video_ltx2_3_flf2v.json
 
 # Common noise that should never be tracked even inside allowed dirs
 **/__pycache__/

@@ -1,8 +1,8 @@
-"""Modal app: WAN 2.2 First-Last-Frame video generation for Risha.
+"""Modal app: WAN 2.2 + LTX-2.3 First-Last-Frame video generation for Risha.
 
 Sibling to `modal_comfyui.py`. Kept as a SEPARATE Modal app because:
-  * Video models are huge (~37 GB on disk) — isolating them keeps the T2I app's
-    cold start lean and lets us pick a beefier GPU tier (H100/B200) per-app.
+  * Video models are huge (~76 GB combined on disk) — isolating them keeps the
+    T2I app's cold start lean and lets us pick a beefier GPU tier per-app.
   * Independent redeploys: video-only changes don't bounce the T2I instance
     that the comfyui-mcp is already pointed at.
   * Separate URL → easier for teammates to test one pipeline without touching
@@ -14,16 +14,22 @@ Deploy:
 After deploy Modal prints a URL like:
     https://<workspace>--risha-video-ui.modal.run
 
-First-deploy bootstrap (one-time, ~25-40 min over fast peering):
+First-deploy bootstrap (one-time, ~40-70 min over fast peering for the full
+~76 GB; resumable — re-runs skip already-cached files):
     modal run modal_video.py::download_models
 
 Headless smoke test (uses the bundled wan_flf_test workflow):
     modal run modal_video.py::run_flf_test
 
-Workflow ships under /input/workflows/wan_flf_test.api.json — the WAN 2.2
-official-fp8 dual hi-lo two-pass with Lightning LoRAs (4 steps total, uni_pc,
-beta, ModelSamplingSD3 shift=5). Drop a start frame + end frame via the UI,
-queue, get an MP4 back. See wan-flf-video skill docs for the math.
+Workflows shipped under /input/workflows/:
+  * wan_flf_test.api.json        — WAN 2.2 official-fp8 dual hi-lo two-pass with
+                                   Lightning LoRAs (4 steps, uni_pc/beta,
+                                   ModelSamplingSD3 shift=5). API form → headless
+                                   compatible.
+  * video_ltx2_3_flf2v.json      — LTX-2.3 22B distilled fp8 FLF (graph form,
+                                   load via the UI). Uses gemma_3_12B_it_fp4_mixed
+                                   as the text encoder; ManualSigmas controls the
+                                   distilled sampling schedule.
 """
 
 import subprocess
@@ -72,15 +78,24 @@ image = (
         f"--index-url https://download.pytorch.org/whl/{CUDA_WHEEL}",
     )
     .run_commands(
-        # Custom nodes needed for WAN 2.2 FLF:
+        # Custom nodes needed for WAN 2.2 FLF + LTX-2.3 FLF:
         #   - ComfyUI-VideoHelperSuite → VHS_VideoCombine (MP4 encode)
         #   - ComfyUI-KJNodes          → ImageResizeKJv2 (crop+pad to 16-aligned dims)
         #   - rgthree-comfy            → Lora Loader Stack (LoRA stacking)
         #   - ComfyUI-Manager          → runtime dep some packs install against
+        #   - ComfyUI-LTXVideo         → belt-and-braces fallback for the LTX-2.3
+        #                                 audio-joint nodes (LTXVAudioVAELoader,
+        #                                 LTXAVTextEncoderLoader, LTXVConcat/SeparateAVLatent,
+        #                                 LTXVAudioVAEDecode). LTX-2 base is in comfy-core,
+        #                                 but these newer nodes are safer with the official pack.
+        #   - ComfyMath                → ComfyMathExpression node used in the LTX workflow.
+        #                                 NOT in core despite the workflow's misleading cnr_id.
         "comfy node install comfyui-videohelpersuite",
         "comfy node install ComfyUI-KJNodes",
         "comfy node install rgthree-comfy",
         "comfy node install ComfyUI-Manager",
+        "comfy node install ComfyUI-LTXVideo",
+        "comfy node install ComfyMath",
     )
     .run_commands(
         # Same scrub as modal_comfyui.py — let the persistent Volumes mount
@@ -292,12 +307,14 @@ def run_flf_test(
     secrets=[modal.Secret.from_name("huggingface", required_keys=["HF_TOKEN"])],
 )
 def download_models():
-    """Populate the video models volume with the WAN 2.2 FLF stack.
+    """Populate the video models volume with the WAN 2.2 + LTX-2.3 FLF stacks.
 
-    Verified against live HF repo trees 2026-06-02:
-      * Comfy-Org/Wan_2.2_ComfyUI_Repackaged   (i2v 14B fp8 + umt5 + vae)
-      * Comfy-Org/Wan_2.1_ComfyUI_repackaged   (clip_vision_h)         ← note: lowercase 'r'
+    Verified against live HF repo trees 2026-06-02 / 2026-06-03:
+      * Comfy-Org/Wan_2.2_ComfyUI_Repackaged   (WAN i2v 14B fp8 + umt5 + vae)
+      * Comfy-Org/Wan_2.1_ComfyUI_repackaged   (clip_vision_h)        ← note: lowercase 'r'
       * lightx2v/Wan2.2-Lightning              (4-step i2v hi+lo LoRAs)
+      * Lightricks/LTX-2.3-fp8                 (LTX-2.3 22B distilled fp8 ckpt)
+      * Comfy-Org/ltx-2                        (gemma_3_12B_it_fp4_mixed TE)
     """
     from huggingface_hub import hf_hub_download
     import os
@@ -305,6 +322,7 @@ def download_models():
     HF_TOKEN = os.environ["HF_TOKEN"]
 
     DM = "/root/comfy/ComfyUI/models/diffusion_models"
+    CKPT = "/root/comfy/ComfyUI/models/checkpoints"
     TE = "/root/comfy/ComfyUI/models/text_encoders"
     VAE = "/root/comfy/ComfyUI/models/vae"
     CV = "/root/comfy/ComfyUI/models/clip_vision"
@@ -360,6 +378,27 @@ def download_models():
         if not os.path.exists(target):
             os.rename(local_path, target)
 
+    # ── LTX-2.3 22B distilled fp8 checkpoint (29.5 GB) ──────────────────────
+    # Single safetensors bundles UNET + image VAE + audio VAE — the workflow
+    # loads it via THREE separate loaders (CheckpointLoaderSimple,
+    # LTXVAudioVAELoader, LTXAVTextEncoderLoader) all pointing at the same file.
+    # Goes in models/checkpoints/ (not diffusion_models/) per CheckpointLoaderSimple.
+    hf_hub_download(
+        repo_id="Lightricks/LTX-2.3-fp8",
+        filename="ltx-2.3-22b-distilled-fp8.safetensors",
+        local_dir=CKPT, token=HF_TOKEN,
+    )
+
+    # ── Gemma-3 12B text encoder (fp4 mixed, 9.45 GB) ───────────────────────
+    # LTX-2 text encoder. fp4_mixed is the smallest viable variant; fp8_scaled
+    # (13.2 GB) and bf16 (24.4 GB) also exist in the same repo dir if quality
+    # ever becomes a concern. Lives in text_encoders/ alongside the WAN umt5.
+    hf_hub_download(
+        repo_id="Comfy-Org/ltx-2",
+        filename="split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors",
+        local_dir=TE, token=HF_TOKEN,
+    )
+
     models_vol.commit()
 
     print("Video models downloaded:")
@@ -368,6 +407,8 @@ def download_models():
     print(f"  WAN 2.1 VAE                   → {VAE}")
     print(f"  CLIP-Vision-H                 → {CV}")
     print(f"  Lightning LoRAs    4-step x2  → {LORAS}")
+    print(f"  LTX-2.3 22B        distilled fp8 → {CKPT}")
+    print(f"  Gemma-3 12B TE     fp4 mixed  → {TE}")
     print("Volume committed.")
 
 
